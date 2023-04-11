@@ -1,4 +1,3 @@
 [submodule "OneGan"]
 	path = OneGan
-    url = https://github.com/yuyingyeh/OneGan.git
-    branch = stable
+	url = https://github.com/yuyingyeh/OneGan.git
