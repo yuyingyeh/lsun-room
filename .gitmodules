@@ -1,0 +1,3 @@
+[submodule "OneGan"]
+	path = OneGan
+	url = https://github.com/leVirve/OneGan.git
