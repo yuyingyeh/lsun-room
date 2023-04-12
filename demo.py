@@ -1,3 +1,4 @@
+from configparser import Interpolation
 import pathlib
 import click
 import cv2
@@ -23,7 +24,8 @@ class Predictor:
         _, outputs = self.model(image.unsqueeze(0).cuda())
         label = core.label_as_rgb_visual(outputs.cpu()).squeeze(0)
         blend_output = (image / 2 + .5) * (1 - alpha) + (label * alpha)
-        return blend_output.permute(1, 2, 0).numpy()
+        # return blend_output.permute(1, 2, 0).numpy()
+        return blend_output.permute(1, 2, 0).numpy(), outputs.cpu().squeeze().numpy()
 
 
 @click.group()
@@ -34,17 +36,33 @@ def cli():
 @cli.command()
 @click.option('--path', type=click.Path(exists=True))
 @click.option('--weight', type=click.Path(exists=True))
+@click.option('--output_folder')
 @click.option('--image_size', default=320, type=int)
-def image(path, weight, image_size):
+def image(path, weight, output_folder, image_size):
     logger.info('Press `q` to exit the sequence inference.')
     predictor = Predictor(weight_path=weight)
     images = sequence.ImageFolder(image_size, path)
 
-    for image, shape, _ in images:
-        output = cv2.resize(predictor.feed(image), shape)
-        cv2.imshow('layout', output[..., ::-1])
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            break
+    output_folder = pathlib.Path(output_folder)
+    output_folder.mkdir(exist_ok=True, parents=True)
+
+    for image, shape, path in images:
+        blend_output, output = predictor.feed(image)
+        blend_output = cv2.resize(blend_output, shape)
+        output_path = str(output_folder / path.name)
+        # blended image
+        cv2.imwrite(output_path, (blend_output[..., ::-1] * 255).astype(np.uint8))
+        # layout masks, frontal = 0, left = 1, right = 2, floor = 3, ceiling = 4
+        output = cv2.resize(output, shape, interpolation=cv2.INTER_NEAREST)
+        cv2.imwrite(output_path.replace('.', '_wallf.'), (output == 0).astype(np.uint8) * 255)
+        cv2.imwrite(output_path.replace('.', '_walll.'), (output == 1).astype(np.uint8) * 255)
+        cv2.imwrite(output_path.replace('.', '_wallr.'), (output == 2).astype(np.uint8) * 255)
+        cv2.imwrite(output_path.replace('.', '_floor.'), (output == 3).astype(np.uint8) * 255)
+        cv2.imwrite(output_path.replace('.', '_ceiling.'), (output == 4).astype(np.uint8) * 255)
+        # output = cv2.resize(predictor.feed(image), shape)
+        # cv2.imshow('layout', output[..., ::-1])
+        # if cv2.waitKey(0) & 0xFF == ord('q'):
+        #     break
 
 
 @cli.command()
