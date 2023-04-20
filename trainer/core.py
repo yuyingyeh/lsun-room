@@ -1,8 +1,8 @@
-import onegan
+# import onegan
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from kornia.filters import sobel
+# from kornia.filters import sobel
 from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision.utils import make_grid
@@ -29,47 +29,47 @@ class LayoutSeg(pl.LightningModule):
         _, outputs = torch.max(scores, 1)
         return scores, outputs
 
-    def training_step(self, batch, batch_idx):
-        inputs = batch['image']
-        targets = batch['label']
-        scores, outputs = self(inputs)
-        loss_terms = self.criterion(scores, outputs, targets, batch)
+    # def training_step(self, batch, batch_idx):
+    #     inputs = batch['image']
+    #     targets = batch['label']
+    #     scores, outputs = self(inputs)
+    #     loss_terms = self.criterion(scores, outputs, targets, batch)
 
-        if self.global_step % 100 == 0:
-            self.logger.experiment.add_image(
-                'train_input', make_grid(inputs, nrow=4, normalize=True), self.global_step)
-            self.logger.experiment.add_image(
-                'train_prediction', make_grid(label_as_rgb_visual(outputs), nrow=4), self.global_step)
-            self.logger.experiment.add_image(
-                'train_target', make_grid(label_as_rgb_visual(targets), nrow=4), self.global_step)
+    #     if self.global_step % 100 == 0:
+    #         self.logger.experiment.add_image(
+    #             'train_input', make_grid(inputs, nrow=4, normalize=True), self.global_step)
+    #         self.logger.experiment.add_image(
+    #             'train_prediction', make_grid(label_as_rgb_visual(outputs), nrow=4), self.global_step)
+    #         self.logger.experiment.add_image(
+    #             'train_target', make_grid(label_as_rgb_visual(targets), nrow=4), self.global_step)
 
-        loss = loss_terms['loss/loss']
-        loss_terms = {f'train_{k}': v for k, v in loss_terms.items()}
-        self.log_dict(loss_terms, prog_bar=True, logger=True)
-        return loss
+    #     loss = loss_terms['loss/loss']
+    #     loss_terms = {f'train_{k}': v for k, v in loss_terms.items()}
+    #     self.log_dict(loss_terms, prog_bar=True, logger=True)
+    #     return loss
 
-    def validation_step(self, batch, batch_idx):
-        inputs = batch['image']
-        targets = batch['label']
-        scores, outputs = self(inputs)
+    # def validation_step(self, batch, batch_idx):
+    #     inputs = batch['image']
+    #     targets = batch['label']
+    #     scores, outputs = self(inputs)
 
-        metric_terms = self.metric(outputs, targets)
-        self.log_dict(metric_terms, logger=True)
+    #     metric_terms = self.metric(outputs, targets)
+    #     self.log_dict(metric_terms, logger=True)
 
-        loss_terms = self.criterion(scores, outputs, targets, batch)
-        loss = loss_terms['loss/loss']
-        loss_terms = {f'val_{k}': v for k, v in loss_terms.items()}
-        self.log_dict(loss_terms, logger=True)
-        return loss
+    #     loss_terms = self.criterion(scores, outputs, targets, batch)
+    #     loss = loss_terms['loss/loss']
+    #     loss_terms = {f'val_{k}': v for k, v in loss_terms.items()}
+    #     self.log_dict(loss_terms, logger=True)
+    #     return loss
 
-    def test_step(self, batch, batch_idx):
-        inputs = batch['image']
-        targets = batch['label']
-        _, outputs = self(inputs)
+    # def test_step(self, batch, batch_idx):
+    #     inputs = batch['image']
+    #     targets = batch['label']
+    #     _, outputs = self(inputs)
 
-        metric_terms = self.metric(outputs, targets)
-        self.log('score', metric_terms['score'])
-        return metric_terms
+    #     metric_terms = self.metric(outputs, targets)
+    #     self.log('score', metric_terms['score'])
+    #     return metric_terms
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -79,44 +79,44 @@ class LayoutSeg(pl.LightningModule):
             'monitor': 'val_loss/loss'
         }
 
-    def criterion(self, score, prediction, target, data):
-        def layout_gradient(output, σ=5.0):
-            return 1 - torch.exp(-sobel(output.unsqueeze(1).float()) / σ)
+    # def criterion(self, score, prediction, target, data):
+    #     def layout_gradient(output, σ=5.0):
+    #         return 1 - torch.exp(-sobel(output.unsqueeze(1).float()) / σ)
 
-        loss = 0
-        terms = {}
-        ''' per-pixel classification loss '''
-        seg_loss = F.nll_loss(F.log_softmax(score, dim=1), target, ignore_index=255)
-        loss += seg_loss
-        terms['loss/cla'] = seg_loss
+    #     loss = 0
+    #     terms = {}
+    #     ''' per-pixel classification loss '''
+    #     seg_loss = F.nll_loss(F.log_softmax(score, dim=1), target, ignore_index=255)
+    #     loss += seg_loss
+    #     terms['loss/cla'] = seg_loss
 
-        ''' area smoothness loss '''
-        if self.l1_factor or self.l2_factor:
-            l_loss = F.mse_loss if self.l2_factor else F.l1_loss
-            l1_λ = self.l1_factor or self.l2_factor
-            # TODO ignore 255
-            onehot_target = torch.zeros_like(score).scatter_(1, target.unsqueeze(1), 1)
-            l1_loss = l_loss(score, onehot_target)
-            loss += l1_loss * l1_λ
-            terms['loss/area'] = l1_loss
+    #     ''' area smoothness loss '''
+    #     if self.l1_factor or self.l2_factor:
+    #         l_loss = F.mse_loss if self.l2_factor else F.l1_loss
+    #         l1_λ = self.l1_factor or self.l2_factor
+    #         # TODO ignore 255
+    #         onehot_target = torch.zeros_like(score).scatter_(1, target.unsqueeze(1), 1)
+    #         l1_loss = l_loss(score, onehot_target)
+    #         loss += l1_loss * l1_λ
+    #         terms['loss/area'] = l1_loss
 
-        ''' layout edge constraint loss '''
-        if self.edge_factor:
-            edge_map = layout_gradient(prediction).squeeze(1)
-            target_edge = data['edge'].to(device=edge_map.device)
-            edge_loss = F.binary_cross_entropy(edge_map, target_edge)
-            loss += edge_loss * self.edge_factor
-            terms['loss/edge'] = edge_loss
+    #     ''' layout edge constraint loss '''
+    #     if self.edge_factor:
+    #         edge_map = layout_gradient(prediction).squeeze(1)
+    #         target_edge = data['edge'].to(device=edge_map.device)
+    #         edge_loss = F.binary_cross_entropy(edge_map, target_edge)
+    #         loss += edge_loss * self.edge_factor
+    #         terms['loss/edge'] = edge_loss
 
-        terms['loss/loss'] = loss
-        return terms
+    #     terms['loss/loss'] = loss
+    #     return terms
 
-    def metric(self, output, target):
-        seg_metric = onegan.metrics.semantic_segmentation.Metric(num_class=5, only_scalar=True)
-        score_metric = onegan.metrics.semantic_segmentation.max_bipartite_matching_score
-        accuracies = seg_metric(output, target)
-        score = score_metric(output, target)
-        return {**accuracies, 'score': score}
+    # def metric(self, output, target):
+    #     seg_metric = onegan.metrics.semantic_segmentation.Metric(num_class=5, only_scalar=True)
+    #     score_metric = onegan.metrics.semantic_segmentation.max_bipartite_matching_score
+    #     accuracies = seg_metric(output, target)
+    #     score = score_metric(output, target)
+    #     return {**accuracies, 'score': score}
 
     def get_progress_bar_dict(self):
         # don't show the version number
